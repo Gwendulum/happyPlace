@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	_ "charm.land/bubbletea/v2"
@@ -39,7 +40,7 @@ func main() {
 		input := scanner.Text()
 
 		if input == "add" {
-			s := createStream("testshort.wav")
+			s := createStream("test1.wav")
 			mixer.Add(&s)
 			input = scanner.Text()
 		}
@@ -64,4 +65,10 @@ func createStream(filepath string) StreamPlayer {
 	s := StreamPlayer{}
 	s.loadFile(filepath)
 	return s
+}
+
+type AudioEngine struct {
+	mixer  *beep.Mixer
+	Active map[string]*StreamPlayer
+	mu     sync.RWMutex
 }
