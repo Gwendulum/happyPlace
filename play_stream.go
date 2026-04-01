@@ -51,7 +51,6 @@ func (s *StreamPlayer) Stream(samples [][2]float64) (n int, ok bool) {
 	if currentPosition <= totalLength-fadeTime {
 	}
 	if currentPosition > totalLength-fadeTime && s.Crossfade == nil {
-		log.Printf("init crossfade")
 		s.Crossfade = beep.Take(
 			fadeTime,
 			beep.Mix(
@@ -62,7 +61,6 @@ func (s *StreamPlayer) Stream(samples [][2]float64) (n int, ok bool) {
 	if s.Crossfade != nil {
 		n, ok = s.Crossfade.Stream(samples)
 		if !ok {
-			log.Printf("hand-off")
 			s.CurrentStream.Seek(0)
 			tmpStream := s.CurrentStream
 			s.CurrentStream = s.NextStream
