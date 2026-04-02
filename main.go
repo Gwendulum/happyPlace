@@ -15,16 +15,171 @@ import (
 
 var files = []string{"test1.wav", "testshort.wav"}
 
-type model struct {
+type sessionState int
+
+const (
+	filepickerState sessionState = iota
+	mixerState
+)
+
+type rootModel struct {
+	state        sessionState
+	filepicker   tea.Model
+	mixer        tea.Model
+	selectedFile string
+	engine       *AudioEngine
+}
+
+func initialRootModel(fp filePickerModel, mm mixerModel, ae *AudioEngine) rootModel {
+	return rootModel{
+		state:      filepickerState,
+		filepicker: fp,
+		mixer:      mm,
+		engine:     ae,
+	}
+}
+
+type startInModeMsg struct{}
+
+func (m rootModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case startInModeMsg:
+		m.state = filepickerState
+		fmt.Printf("did this run?")
+		return m, nil
+
+	case fileSelectedMsg:
+		m.selectedFile = msg.Path
+		m.state = mixerState
+		m.engine.Play(m.selectedFile)
+	}
+
+	switch m.state {
+	case filepickerState:
+		m.filepicker, cmd = m.filepicker.Update(msg)
+		cmds = append(cmds, cmd)
+
+	case mixerState:
+		m.mixer, cmd = m.mixer.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m rootModel) View() tea.View {
+	switch m.state {
+	case filepickerState:
+		return m.filepicker.View()
+	case mixerState:
+		return m.mixer.View()
+	}
+	return tea.NewView("you're in root mode. What are you doing here?")
+}
+
+type filePickerModel struct {
 	cursor int
 	file   string
 	engine *AudioEngine
 }
 
-func initialModel(ae *AudioEngine) model {
-	return model{
-		engine: ae,
+func (fp filePickerModel) Init() tea.Cmd {
+	return nil
+}
+
+func (fp filePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+
+	case tea.KeyPressMsg:
+
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return fp, tea.Quit
+		case "down", "j":
+			if fp.cursor < len(files)-1 {
+				fp.cursor++
+			}
+		case "up", "k":
+			if fp.cursor > 0 {
+				fp.cursor--
+			}
+		case "enter":
+			fp.file = files[fp.cursor]
+			return fp, func() tea.Msg {
+				return fileSelectedMsg{Path: fp.file}
+			}
+		}
+
 	}
+	return fp, nil
+}
+
+func (fp filePickerModel) View() tea.View {
+	s := strings.Builder{}
+	s.WriteString("choose a file\n\n")
+
+	for i := range files {
+
+		s.WriteString(" ")
+
+		if fp.cursor == i {
+			s.WriteString("• ")
+		}
+		s.WriteString(files[i])
+		s.WriteString("\n")
+	}
+
+	s.WriteString("\npress 'q' to quit \n")
+	v := tea.NewView(s.String())
+	v.AltScreen = true
+	return v
+}
+
+type mixerModel struct {
+	cursor int
+}
+
+func (mm mixerModel) Init() tea.Cmd {
+	return nil
+}
+
+func (mm mixerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
+	switch msg := msg.(type) {
+
+	case tea.KeyPressMsg:
+
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return mm, tea.Quit
+		case "down", "j":
+			if mm.cursor < len(files)-1 {
+				mm.cursor++
+			}
+		case "up", "k":
+			if mm.cursor > 0 {
+				mm.cursor--
+			}
+		}
+
+	}
+	return mm, nil
+}
+
+func (mm mixerModel) View() tea.View {
+
+	s := strings.Builder{}
+	s.WriteString("\nmixer mode\n")
+	s.WriteString("\npress 'q' to quit \n")
+	v := tea.NewView(s.String())
+	v.AltScreen = true
+	return v
 }
 
 type audioErrorMsg error
@@ -39,54 +194,8 @@ func playFileCmd(ae *AudioEngine, path string) tea.Cmd {
 	}
 }
 
-func (m model) Init() tea.Cmd {
-	return nil
-}
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-
-	case tea.KeyPressMsg:
-
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "down", "j":
-			if m.cursor < len(files)-1 {
-				m.cursor++
-			}
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "enter":
-			m.file = files[m.cursor]
-			return m, playFileCmd(m.engine, m.file)
-
-		}
-
-	}
-	return m, nil
-}
-
-func (m model) View() tea.View {
-	s := strings.Builder{}
-	s.WriteString("choose a file\n\n")
-
-	for i := range files {
-
-		s.WriteString(" ")
-
-		if m.cursor == i {
-			s.WriteString("• ")
-		}
-		s.WriteString(files[i])
-		s.WriteString("\n")
-	}
-
-	s.WriteString("\npress 'q' to quit \n")
-	v := tea.NewView(s.String())
-	v.AltScreen = true
-	return v
+type fileSelectedMsg struct {
+	Path string
 }
 
 func main() {
@@ -103,17 +212,12 @@ func main() {
 		mixer:      &mixer,
 		volumeCtrl: &ctrl1,
 	}
-	/*TODO: add function for creating new streams from file and adding that file to a registry.
-	Registry will ensure there are no duplicate streams(though supports multiple streams from the same file), and sets a max number of streams running at a time.
-	*/
-
-	//TODO: add "smooth volume" for each stream that waits for next sample. Will later be slider.
-	//TODO: add oscillating volume for each stream.
-	//TODO: add "stop stream" functionality that stops and removes streams from .Mixer and the registry.
-	p := tea.NewProgram(initialModel(&ae))
+	fp := filePickerModel{}
+	mm := mixerModel{}
+	p := tea.NewProgram(initialRootModel(fp, mm, &ae))
 	_, err := p.Run()
 	if err != nil {
-		fmt.Printf("error %v", err)
+		fmt.Printf("error here %v", err)
 		os.Exit(1)
 	}
 
