@@ -13,15 +13,19 @@ import (
 )
 
 type StreamPlayer struct {
+	filepath      string
 	CurrentStream beep.StreamSeekCloser
 	NextStream    beep.StreamSeekCloser
 	Crossfade     beep.Streamer
+	pauseFade     beep.Streamer
 	Format        beep.Format
+	loaded        bool
+	Paused        bool
 }
 
-func (s *StreamPlayer) loadFile(filepath string) {
+func (s *StreamPlayer) loadFile() {
 
-	f1, err := os.Open(filepath)
+	f1, err := os.Open(s.filepath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,7 +34,7 @@ func (s *StreamPlayer) loadFile(filepath string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	f2, _ := os.Open(filepath)
+	f2, _ := os.Open(s.filepath)
 
 	s2, _, err := wav.Decode(f2)
 	if err != nil {
@@ -45,11 +49,16 @@ func (s *StreamPlayer) loadFile(filepath string) {
 }
 
 func (s *StreamPlayer) Stream(samples [][2]float64) (n int, ok bool) {
+	if s.CurrentStream == nil {
+		return 0, false
+	}
+	if s.Paused {
+		clear(samples)
+		return len(samples), true
+	}
 	currentPosition := s.CurrentStream.Position()
 	totalLength := s.CurrentStream.Len()
 	fadeTime := s.Format.SampleRate.N(time.Second * 15)
-	if currentPosition <= totalLength-fadeTime {
-	}
 	if currentPosition > totalLength-fadeTime && s.Crossfade == nil {
 		s.Crossfade = beep.Take(
 			fadeTime,
@@ -58,6 +67,7 @@ func (s *StreamPlayer) Stream(samples [][2]float64) (n int, ok bool) {
 				effects.Transition(s.NextStream, fadeTime, 0.0, 1.0, effects.TransitionEqualPower),
 			))
 	}
+
 	if s.Crossfade != nil {
 		n, ok = s.Crossfade.Stream(samples)
 		if !ok {
@@ -75,9 +85,28 @@ func (s *StreamPlayer) Stream(samples [][2]float64) (n int, ok bool) {
 		}
 		return n, true
 	}
+
 	return s.CurrentStream.Stream(samples)
 }
 
+func (s *StreamPlayer) Play() {
+	s.Paused = false
+}
+
+func (s *StreamPlayer) Stop() {
+	s.Paused = true
+}
 func (s *StreamPlayer) Err() error {
 	return nil
+}
+
+func (s *StreamPlayer) Init() {
+	s.filepath = ""
+	s.CurrentStream = nil
+	s.NextStream = nil
+	s.Crossfade = nil
+	s.Format = beep.Format{}
+	s.loaded = false
+	s.Paused = false
+
 }

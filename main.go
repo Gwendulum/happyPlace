@@ -3,7 +3,6 @@ package main
 import (
 	tea "charm.land/bubbletea/v2"
 	"fmt"
-	"github.com/gopxl/beep/effects"
 	"github.com/gopxl/beep/v2"
 	_ "github.com/hajimehoshi/oto/v2"
 
@@ -15,29 +14,22 @@ var files = []string{"test1.wav", "testshort.wav"}
 func main() {
 	mixer := beep.Mixer{}
 
-	vol := effects.Volume{
-		Streamer: &mixer,
-		Base:     10.0,
-		Volume:   0.0,
-		Silent:   false,
+	ae := AudioEngine{
+		mixer:     &mixer,
+		streamers: make([]*StreamPlayer, 4),
 	}
 
-	ctrl := beep.Ctrl{
-		Streamer: &vol,
-	}
-	ae := AudioEngine{
-		mixer:      &mixer,
-		volumeCtrl: &vol,
-		pauseCtrl:  &ctrl,
+	for i := range ae.streamers {
+		ae.streamers[i] = &StreamPlayer{}
 	}
 	fp := filePickerModel{}
 	mm := mixerModel{
-		stream: make([]streamData, 4),
+		engine: &ae,
 	}
-	p := tea.NewProgram(initialRootModel(fp, mm, &ae))
+	p := tea.NewProgram(initialRootModel(fp, mm))
 	_, err := p.Run()
 	if err != nil {
-		fmt.Printf("error here %v", err)
+		fmt.Printf("error here %v\n", err)
 		os.Exit(1)
 	}
 
